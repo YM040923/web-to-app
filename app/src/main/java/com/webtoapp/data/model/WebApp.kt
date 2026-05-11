@@ -311,6 +311,7 @@ data class WebViewConfig(
 
     val allowFileAccessFromFileURLs: Boolean = false,
     val allowUniversalAccessFromFileURLs: Boolean = false,
+    val mixedContentMode: String? = null,  // null=NEVER_ALLOW, "ALWAYS_ALLOW", "NEVER_ALLOW", "COMPATIBILITY"
 
     val errorPageConfig: com.webtoapp.core.errorpage.ErrorPageConfig = com.webtoapp.core.errorpage.ErrorPageConfig(),
     val performanceOptimization: Boolean = false,

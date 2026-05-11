@@ -18,6 +18,8 @@ class ApkTemplate(private val context: Context) {
     companion object {
 
         private const val TEMPLATE_APK = "template/webview_shell.apk"
+        private const val TEMPLATE_VERSION_FILE = "template_version.txt"
+        private const val TEMPLATE_VERSION = 2
 
 
         const val CONFIG_PATH = "assets/app_config.json"
@@ -53,12 +55,20 @@ class ApkTemplate(private val context: Context) {
 
     fun getTemplateApk(): File? {
         val templateFile = File(templateDir, "webview_shell.apk")
+        val versionFile = File(templateDir, TEMPLATE_VERSION_FILE)
 
-
-        if (templateFile.exists()) {
-            return templateFile
+        // Check if cached template is still valid by comparing version stamp
+        if (templateFile.exists() && versionFile.exists()) {
+            val cachedVersion = try {
+                versionFile.readText().trim().toIntOrNull() ?: 0
+            } catch (_: Exception) { 0 }
+            if (cachedVersion == TEMPLATE_VERSION) {
+                return templateFile
+            }
+            // Version mismatch — delete stale cache
+            templateFile.delete()
+            versionFile.delete()
         }
-
 
         return try {
             context.assets.open(TEMPLATE_APK).use { input ->
@@ -66,9 +76,10 @@ class ApkTemplate(private val context: Context) {
                     input.copyTo(output)
                 }
             }
+            // Write version stamp
+            versionFile.writeText(TEMPLATE_VERSION.toString())
             templateFile
         } catch (e: Exception) {
-
             null
         }
     }

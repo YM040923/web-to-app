@@ -114,22 +114,28 @@ class TranslateBridge(
 
 
                 val resultsJson = JSONArray(results).toString()
-                    .replace("\\", "\\\\")
-                    .replace("'", "\\'")
-                    .replace("\n", "\\n")
-                    .replace("\r", "\\r")
 
                 withContext(Dispatchers.Main) {
+                    val safeJson = resultsJson.replace("\\", "\\\\")
+                        .replace("'", "\\'")
+                        .replace("\n", "\\n")
+                        .replace("\r", "\\r")
+                        .replace("</", "<\\/")
+                    val safeCallbackId = callbackId.replace("'", "\\'").replace("\\", "\\\\")
                     webView.evaluateJavascript(
-                        "window._translateCallback('$callbackId', '$resultsJson');",
+                        "window._translateCallback('$safeCallbackId', JSON.parse('$safeJson'));",
                         null
                     )
                 }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "翻译执行失败", e)
                 withContext(Dispatchers.Main) {
+                    val safeMsg = (e.message ?: "Unknown error")
+                        .replace("\\", "\\\\")
+                        .replace("'", "\\'")
+                        .replace("\n", "\\n")
                     webView.evaluateJavascript(
-                        "window._translateCallback('$callbackId', null, '${e.message?.replace("'", "\\'")}');",
+                        "window._translateCallback('${callbackId.replace("'", "\\'")}', null, '$safeMsg');",
                         null
                     )
                 }

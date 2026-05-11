@@ -1076,7 +1076,9 @@ class WebViewManager(
 
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-        cookieManager.flush()
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            cookieManager.flush()
+        }
         AppLogger.d("WebViewManager", "Cookie persistence enabled (thirdParty=true, disableShields=${config.disableShields})")
 
         val isDesktopModeRequested = config.userAgentMode in DESKTOP_UA_MODES || config.desktopMode || (currentDeviceDisguiseConfig?.requiresDesktopViewport() == true)
@@ -1183,7 +1185,16 @@ class WebViewManager(
 
 
 
-                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                mixedContentMode = if (config.mixedContentMode != null) {
+                    when (config.mixedContentMode) {
+                        "ALWAYS_ALLOW" -> WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        "NEVER_ALLOW" -> WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                        "COMPATIBILITY" -> WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                        else -> WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    }
+                } else {
+                    WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                }
 
 
                 mediaPlaybackRequiresUserGesture = false
@@ -3041,7 +3052,9 @@ class WebViewManager(
 
         val cookieManager = CookieManager.getInstance()
         cookieManager.removeSessionCookies(null)
-        cookieManager.flush()
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            cookieManager.flush()
+        }
 
         val origins = buildStrictHostOrigins(pageUrl)
         if (origins.isNotEmpty()) {

@@ -57,7 +57,7 @@ class ShellModeManager(private val context: Context) {
             val jsonStr = try {
                 assetDecryptor.loadAssetAsString(CONFIG_FILE)
             } catch (e: Exception) {
-                AppLogger.e(TAG, "AssetDecryptor 加载失败，尝试直接读取", e)
+                AppLogger.e(TAG, "WARNING: AssetDecryptor 加载失败，尝试直接读取（解密可能未生效！）", e)
                 try {
                     context.assets.open(CONFIG_FILE).bufferedReader().use { it.readText() }
                 } catch (e2: Exception) {

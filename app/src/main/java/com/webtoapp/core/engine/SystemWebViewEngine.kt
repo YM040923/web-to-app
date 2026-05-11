@@ -49,14 +49,21 @@ class SystemWebViewEngine(
             override fun onHideCustomView() = callback.onHideCustomView()
 
             override fun onGeolocationPermission(origin: String?, cb: GeolocationPermissions.Callback?) {
-
-
-                cb?.invoke(origin, true, false)
+                cb?.invoke(origin, false, false)
             }
 
             override fun onPermissionRequest(request: PermissionRequest?) {
-
-                request?.grant(request.resources)
+                // Grant only safe permissions by default; deny camera/mic unless explicitly enabled
+                val resources = request?.resources ?: emptyArray()
+                val safeResources = resources.filter { resource ->
+                    resource == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
+                    resource == PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                }
+                if (safeResources.isEmpty()) {
+                    request?.deny()
+                } else {
+                    request?.grant(safeResources.toTypedArray())
+                }
             }
 
             override fun onShowFileChooser(

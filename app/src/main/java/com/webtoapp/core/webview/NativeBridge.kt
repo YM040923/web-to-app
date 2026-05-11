@@ -478,8 +478,31 @@ if (NativeBridge.isFullscreen()) {
         }
     }
 
+    private val ALLOWED_LAUNCH_PACKAGES = setOf(
+        "com.tencent.mm",       // 微信
+        "com.tencent.mobileqq", // QQ
+        "com.alibaba.android.rimet", // 钉钉
+        "com.sina.weibo",       // 微博
+        "com.android.vending",  // Google Play
+        "com.android.chrome",
+        "com.google.android.apps.maps",
+        "com.google.android.youtube"
+    )
+
     @JavascriptInterface
     fun openApp(packageName: String): Boolean {
+        if (packageName.isBlank() || packageName.length > 128) {
+            AppLogger.w("NativeBridge", "Blocked invalid packageName in openApp")
+            return false
+        }
+        if (!packageName.matches(Regex("^[a-zA-Z][a-zA-Z0-9._]*$"))) {
+            AppLogger.w("NativeBridge", "Blocked unsafe packageName: $packageName")
+            return false
+        }
+        if (packageName !in ALLOWED_LAUNCH_PACKAGES) {
+            AppLogger.w("NativeBridge", "Blocked unlisted packageName in openApp: $packageName")
+            return false
+        }
         return try {
             val intent = context.packageManager.getLaunchIntentForPackage(packageName)
             if (intent != null) {

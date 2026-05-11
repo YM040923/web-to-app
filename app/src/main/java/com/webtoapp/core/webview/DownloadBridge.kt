@@ -260,12 +260,17 @@ class DownloadBridge(
                         const totalChunks = Math.ceil(blob.size / CHUNK_SIZE);
                         let currentChunk = 0;
 
-                        // Efficient Base64 encoder using sub-batch processing to avoid DOM freeze
+                        // Efficient Base64 encoder using safe chunked processing
                         function uint8ToBase64(uint8Array) {
-                            const SUB_BATCH = 8192;
+                            const SUB_BATCH = 4096; // Reduced from 8192 to avoid apply() argument limits on older WebViews
                             const parts = [];
                             for (let i = 0; i < uint8Array.length; i += SUB_BATCH) {
-                                parts.push(String.fromCharCode.apply(null, uint8Array.subarray(i, i + SUB_BATCH)));
+                                const end = Math.min(i + SUB_BATCH, uint8Array.length);
+                                let str = '';
+                                for (let j = i; j < end; j++) {
+                                    str += String.fromCharCode(uint8Array[j]);
+                                }
+                                parts.push(str);
                             }
                             return btoa(parts.join(''));
                         }

@@ -37,14 +37,14 @@ object ShellRuntimeServices {
     }
 
     val shellMode: ShellModeManager
-        get() = requireNotNull(shellModeManager) { "ShellRuntimeServices 尚未初始化 shellMode" }
+        get() = shellModeManager ?: throw IllegalStateException("ShellRuntimeServices not initialized")
 
     val activation: ActivationManager
-        get() = requireNotNull(activationManager) { "ShellRuntimeServices 尚未初始化 activation" }
+        get() = activationManager ?: throw IllegalStateException("ShellRuntimeServices not initialized")
 
     val announcement: AnnouncementManager
-        get() = requireNotNull(announcementManager) { "ShellRuntimeServices 尚未初始化 announcement" }
+        get() = announcementManager ?: throw IllegalStateException("ShellRuntimeServices not initialized")
 
     val adBlock: AdBlocker
-        get() = requireNotNull(adBlocker) { "ShellRuntimeServices 尚未初始化 adBlock" }
+        get() = adBlocker ?: throw IllegalStateException("ShellRuntimeServices not initialized")
 }
