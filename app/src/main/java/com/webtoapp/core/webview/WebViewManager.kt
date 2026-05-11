@@ -1550,9 +1550,15 @@ class WebViewManager(
 
 
 
-                    if (url.startsWith("http://")) {
+                    // ★ 修复: 不拦截主框架 HTTP 请求（包括表单 POST 登录）
+                    // shouldInterceptRequest API 无法获取 POST body，因此拦截主框架请求
+                    // 会导致登录表单数据丢失。由于生成的 APK 中 cleartextTrafficPermitted=true，
+                    // WebView 完全可以原生处理 HTTP 请求，无需代理。
+                    if (url.startsWith("http://") && !it.isForMainFrame) {
                         val httpHost = extractHostFromUrl(url)
                         if (httpHost != null && !isLocalCleartextHost(httpHost)) {
+                            // 对于子资源 HTTP 请求，通过 OkHttp 代理以确保兼容
+                            // 同时同步 Cookie 到 WebView CookieManager
                             val cleartextResponse = fetchCleartextResource(it)
                             if (cleartextResponse != null) {
                                 return cleartextResponse
@@ -1606,7 +1612,11 @@ class WebViewManager(
 
                 val targetHost = runCatching { Uri.parse(url).host?.lowercase() }.getOrNull()
                 val isPrivateNetworkHost = targetHost != null && isLocalCleartextHost(targetHost)
-                if (!config.disableShields && !isPrivateNetworkHost && ::shields.isInitialized && shields.isEnabled() && shields.getConfig().httpsUpgrade) {
+                // ★ 修复: 如果当前页面是 HTTP，说明该服务器不支持 HTTPS。
+                // 不对同域导航进行 HTTPS 升级，保护登录重定向等关键流程。
+                val currentUrl = view?.url ?: currentMainFrameUrl
+                val currentPageIsHttp = currentUrl != null && currentUrl.startsWith("http://", ignoreCase = true)
+                if (!config.disableShields && !isPrivateNetworkHost && !currentPageIsHttp && ::shields.isInitialized && shields.isEnabled() && shields.getConfig().httpsUpgrade) {
                     val upgradedUrl = shields.httpsUpgrader.tryUpgrade(url)
                     if (upgradedUrl != null) {
                         shields.stats.recordHttpsUpgrade()
@@ -2581,12 +2591,25 @@ class WebViewManager(
             val url = request.url.toString()
 
             val method = request.method?.uppercase() ?: "GET"
-            val body: okhttp3.RequestBody? = if (method == "POST" || method == "PUT" || method == "PATCH")
-                okhttp3.RequestBody.create(null, ByteArray(0)) else null
+            // ★ 修复: 子资源 POST/PUT/PATCH 的 body 也无法从 shouldInterceptRequest 获取，
+            // 因此只对 GET/HEAD 等无 body 请求进行代理。有 body 的子资源请求会 fallback
+            // 到 super.shouldInterceptRequest()。
+            val hasBody = method == "POST" || method == "PUT" || method == "PATCH"
+            if (hasBody) {
+                AppLogger.w("WebViewManager", "CleartextProxy: skipping ${method} sub-resource (body not available): ${url.take(80)}")
+                return null
+            }
 
             val okRequestBuilder = Request.Builder()
                 .url(url)
-                .method(method, body)
+                .method(method, null)
+
+            // ★ 修复: 从 WebView CookieManager 读取 Cookie 并添加到 OkHttp 请求
+            val cookieManager = CookieManager.getInstance()
+            val cookieHeader = cookieManager.getCookie(url)
+            if (!cookieHeader.isNullOrBlank()) {
+                okRequestBuilder.addHeader("Cookie", cookieHeader)
+            }
 
             request.requestHeaders?.forEach { (key, value) ->
                 if (key.lowercase() !in SKIP_HEADERS) {
@@ -2600,6 +2623,19 @@ class WebViewManager(
             val responseCode = okResponse.code
             val responseMessage = okResponse.message.ifBlank { "OK" }
 
+            // ★ 修复: 将 OkHttp 响应中的 Set-Cookie 写回 WebView CookieManager
+            val setCookieHeaders = okResponse.headers("Set-Cookie")
+            for (setCookie in setCookieHeaders) {
+                try {
+                    cookieManager.setCookie(url, setCookie)
+                } catch (e: Exception) {
+                    AppLogger.w("WebViewManager", "Failed to sync Set-Cookie to WebView", e)
+                }
+            }
+            if (setCookieHeaders.isNotEmpty()) {
+                cookieManager.flush()
+            }
+
             val contentType = okResponse.header("Content-Type") ?: "application/octet-stream"
             val mimeType = contentType.split(";").firstOrNull() ?: "application/octet-stream"
             val charset = contentType.substringAfter("charset=", "").ifBlank { "UTF-8" }
@@ -2610,15 +2646,9 @@ class WebViewManager(
                 responseHeaders[name] = value
             }
 
+            val inputStream = okResponse.body?.byteStream() ?: ByteArrayInputStream(ByteArray(0))
 
-
-            val inputStream = if (responseCode in 200..299) {
-                okResponse.body?.byteStream() ?: ByteArrayInputStream(ByteArray(0))
-            } else {
-                okResponse.body?.byteStream() ?: ByteArrayInputStream(ByteArray(0))
-            }
-
-            AppLogger.d("WebViewManager", "CleartextProxy fetched: $url -> $responseCode")
+            AppLogger.d("WebViewManager", "CleartextProxy fetched: $url -> $responseCode (${setCookieHeaders.size} cookies synced)")
 
             WebResourceResponse(
                 mimeType,
@@ -2644,8 +2674,22 @@ class WebViewManager(
     private fun fetchWithCrossOriginHeaders(request: WebResourceRequest): WebResourceResponse? {
         return try {
             val url = request.url.toString()
+
+            // ★ 修复: 跳过有 body 的子资源请求（body 无法从 shouldInterceptRequest 获取）
+            val method = request.method?.uppercase() ?: "GET"
+            if (method == "POST" || method == "PUT" || method == "PATCH") {
+                AppLogger.w("WebViewManager", "CrossOriginIsolation: skipping ${method} (body not available): ${url.take(80)}")
+                return null
+            }
+
             val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
 
+            // ★ 修复: 从 WebView CookieManager 读取 Cookie 并添加到请求
+            val cookieManager = CookieManager.getInstance()
+            val cookieHeader = cookieManager.getCookie(url)
+            if (!cookieHeader.isNullOrBlank()) {
+                connection.setRequestProperty("Cookie", cookieHeader)
+            }
 
             request.requestHeaders?.forEach { (key, value) ->
                 if (key.lowercase() !in SKIP_HEADERS) {
@@ -2653,7 +2697,7 @@ class WebViewManager(
                 }
             }
 
-            connection.requestMethod = request.method ?: "GET"
+            connection.requestMethod = method
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
             connection.instanceFollowRedirects = true
@@ -2670,6 +2714,19 @@ class WebViewManager(
                 }
             }
 
+            // ★ 修复: 将响应中的 Set-Cookie 写回 WebView CookieManager
+            val setCookieHeaders = connection.headerFields?.get("Set-Cookie") ?: emptyList()
+            for (setCookie in setCookieHeaders) {
+                try {
+                    cookieManager.setCookie(url, setCookie)
+                } catch (e: Exception) {
+                    AppLogger.w("WebViewManager", "Failed to sync Set-Cookie to WebView (cross-origin)", e)
+                }
+            }
+            if (setCookieHeaders.isNotEmpty()) {
+                cookieManager.flush()
+            }
+
 
             responseHeaders["Cross-Origin-Opener-Policy"] = "same-origin"
             responseHeaders["Cross-Origin-Embedder-Policy"] = "require-corp"
@@ -2682,7 +2739,7 @@ class WebViewManager(
                 connection.errorStream ?: ByteArrayInputStream(ByteArray(0))
             }
 
-            AppLogger.d("WebViewManager", "CrossOriginIsolation fetch: $url -> $responseCode")
+            AppLogger.d("WebViewManager", "CrossOriginIsolation fetch: $url -> $responseCode (${setCookieHeaders.size} cookies synced)")
 
             WebResourceResponse(
                 mimeType,
