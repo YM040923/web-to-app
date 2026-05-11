@@ -8,6 +8,7 @@ import java.io.File
 
 data class BuildInputPreflightRequest(
     val appType: String,
+    val targetUrl: String = "",
     val htmlEntryFile: String = "index.html",
     val mediaContentPath: String? = null,
     val htmlFiles: List<HtmlFile> = emptyList(),
@@ -51,6 +52,11 @@ object BuildInputPreflight {
         val issues = mutableListOf<BuildInputIssue>()
 
         when (request.appType) {
+            "WEB" -> {
+                if (request.targetUrl.isBlank()) {
+                    issues.add(BuildInputIssue("targetUrl", "Website URL must not be blank"))
+                }
+            }
             "IMAGE", "VIDEO" -> {
                 issues.requireReadableFile(
                     key = "mediaContentPath",

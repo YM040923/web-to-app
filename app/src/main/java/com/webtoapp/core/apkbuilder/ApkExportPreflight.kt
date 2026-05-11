@@ -59,6 +59,7 @@ object ApkExportPreflight {
         val appTypeName = appType.name
         return BuildInputPreflightRequest(
             appType = appTypeName,
+            targetUrl = url,
             htmlEntryFile = htmlConfig?.getValidEntryFile() ?: "index.html",
             mediaContentPath = when (appType) {
                 AppType.IMAGE, AppType.VIDEO -> mediaConfig?.mediaPath ?: url

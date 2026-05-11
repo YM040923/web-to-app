@@ -184,7 +184,7 @@ class JarSigner(private val context: Context) {
                 .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
                 .setKeySize(KEY_SIZE)
                 .setCertificateSubject(X500Principal("CN=WebToApp, O=WebToApp, C=CN"))
-                .setCertificateSerialNumber(BigInteger.valueOf(System.currentTimeMillis()))
+                .setCertificateSerialNumber(BigInteger(java.security.SecureRandom().generateSeed(16)))
                 .setCertificateNotBefore(notBefore)
                 .setCertificateNotAfter(notAfter)
                 .build()
@@ -305,17 +305,20 @@ class JarSigner(private val context: Context) {
 
 
         val keyStoreFile = File(context.filesDir, DEFAULT_PKCS12_FILE)
-        val legacyPassword = "webtoapp_sign"
         if (keyStoreFile.exists()) {
             try {
-                val ks = KeyStore.getInstance("PKCS12")
-                FileInputStream(keyStoreFile).use { fis -> ks.load(fis, legacyPassword.toCharArray()) }
-
-                passwordFile.writeText(legacyPassword)
-                AppLogger.d(TAG, "迁移旧密码到文件存储")
-                return legacyPassword.toCharArray()
+                // Try to load with saved password first (stored in .ks_credential)
+                val saved = passwordFile.takeIf { it.exists() }?.readText()?.trim()
+                if (!saved.isNullOrEmpty()) {
+                    val ks = KeyStore.getInstance("PKCS12")
+                    FileInputStream(keyStoreFile).use { fis -> ks.load(fis, saved.toCharArray()) }
+                    return saved.toCharArray()
+                }
             } catch (_: Exception) {
-
+                // Key exists but password doesn't match — generate new key
+                AppLogger.w(TAG, "Existing keystore could not be loaded, generating new key")
+                keyStoreFile.delete()
+                passwordFile.delete()
             }
         }
 
@@ -436,7 +439,7 @@ class JarSigner(private val context: Context) {
                 .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
                 .setKeySize(KEY_SIZE)
                 .setCertificateSubject(X500Principal("CN=WebToApp, O=WebToApp, C=CN"))
-                .setCertificateSerialNumber(BigInteger.valueOf(System.currentTimeMillis()))
+                .setCertificateSerialNumber(BigInteger(java.security.SecureRandom().generateSeed(16)))
                 .setCertificateNotBefore(notBefore)
                 .setCertificateNotAfter(notAfter)
                 .build()

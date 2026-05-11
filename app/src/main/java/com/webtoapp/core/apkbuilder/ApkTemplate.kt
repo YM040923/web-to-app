@@ -640,8 +640,10 @@ internal object ApkConfigValidator {
         val error = when {
             appType == "HTML" || appType == "FRONTEND" -> validateHtmlEntry(config.htmlEntryFile)
             appType in serverBackedAppTypes -> null
-            config.targetUrl.isBlank() -> "targetUrl must not be blank for appType=$appType"
-            else -> null
+            else -> {
+                if (config.targetUrl.isBlank()) "targetUrl must not be blank for appType=$appType"
+                else null
+            }
         }
 
         require(error == null) {

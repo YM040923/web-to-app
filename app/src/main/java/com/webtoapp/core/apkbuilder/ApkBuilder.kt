@@ -466,6 +466,7 @@ class ApkBuilder(private val context: Context) {
             val preflight = BuildInputPreflight.check(
                 BuildInputPreflightRequest(
                     appType = config.appType,
+                    targetUrl = config.targetUrl,
                     htmlEntryFile = config.htmlEntryFile,
                     mediaContentPath = mediaContentPath,
                     htmlFiles = htmlFiles,
@@ -2810,13 +2811,14 @@ builtins.__import__ = _w2a_import
 
 
     private fun generatePackageName(appName: String): String {
-
-        val raw = appName.hashCode().let {
+        // Use UUID-derived segment with app name hash for uniqueness
+        // Combines app name hash with random UUID to avoid collisions
+        val namePart = appName.hashCode().let {
             if (it < 0) (-it).toString(36) else it.toString(36)
         }.take(4).padStart(4, '0')
-
+        val randomPart = java.util.UUID.randomUUID().toString().replace("-", "").take(8)
+        val raw = "$namePart$randomPart"
         val segment = normalizePackageSegment(raw)
-
         return "com.w2a.$segment"
     }
 
